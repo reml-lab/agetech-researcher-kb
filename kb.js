@@ -276,20 +276,20 @@ function make_paper_grid(papers, div_name){
 
     //Select Columns 
     var columns= [
-            {name: "paper", formatter: (cell) => gridjs.html(cell)},
-            {name: "year", formatter: (cell) => gridjs.html(cell)},
-            {name: "citations", 
+            {name: "Paper", field: "paper", formatter: (cell) => gridjs.html(cell)},
+            {name: "Year", field: "year", formatter: (cell) => gridjs.html(cell)},
+            {name: "Citations", field: "citations", 
                 formatter: (cell) => gridjs.html(cell), 
                 attributes: (cell) => ({style: 'text-align: right'}),
                 sort: { enabled: true, direction: 'desc'}
             },
-            {name: "links", formatter: (cell) => gridjs.html(cell)}
+            {name: "Links", field: "links", formatter: (cell) => gridjs.html(cell)}
         ]
 
     papers = papers.sort((a,b) => b["citations"]-a["citations"])
 
     //Select Data
-    var griddata = papers.map(row => columns.map(col => row[col.name]));
+    var griddata = papers.map(row => columns.map(col => row[col.field]));
         
     // Initialize papers grid
     var papers_grid = new gridjs.Grid({
