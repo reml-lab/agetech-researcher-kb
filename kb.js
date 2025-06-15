@@ -416,7 +416,10 @@ function main(){
         else{
             show_browser(authors_lookup);
         }
+        document.getElementById("loading").style.display = 'none';
     });
+
+    
 }
 
 main();
