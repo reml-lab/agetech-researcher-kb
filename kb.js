@@ -75,6 +75,9 @@ function get_paper_for_grid(paper, authors_lookup){
         }    
     });
 
+    var tech_topics = paper["tech_topics"].join(","); 
+    var health_topics = paper["health_topics"].join(",");
+
     var authors = author_strings.join(", ") + truncated;
 
     var cite = `${authors}. <em>${paper["title"]}</em>. ${paper["source"]}. ${paper["publication_year"]}`;
@@ -92,21 +95,18 @@ function get_paper_for_grid(paper, authors_lookup){
 
     links +=  `<A HREF="${paper["id"]}" target="_blank"><IMG width="24" SRC="img/openalex.png" title="Open in OpenAlex"></A>`;
 
-    return({"paper":cite, "year":paper["publication_year"], "links":links, "citations":paper["cited_by_count"] })
+    return({"paper":cite, "year":paper["publication_year"], "links":links, "citations":paper["cited_by_count"], tech_topics: tech_topics, health_topics:health_topics})
 
 }
 
-function get_top_topics(pub_counts,N){
-    //Get topics
-    topic_list = []
-    for (var t1 in  pub_counts){
-        for (var t2 in  pub_counts[t1]){
-            topic_list.push([`${t1} x ${t2}`, pub_counts[t1][t2]]);
-        }
-    }
-    topic_list=topic_list.sort((a, b) => b[1] - a[1]);
-    top_topics = topic_list.slice(0,N).map( a=> `<LI>${a[0]} (${a[1]})</LI>` ).join("\n");
-    return(top_topics);
+function format_name_count_list(name_count_list,N){
+    var html = name_count_list.slice(0,N).map( a=> `<LI>${a[0]} (${a[1]})</LI>` ).join("\n");
+    return(html);
+}
+
+function format_author_id_count_list(author_ids,authors,N){
+    var html = author_ids.slice(0,N).map( ([id, count]) => `<LI><A href="index.html?researcher=${id.split("/")[3]}">${authors_lookup[id]["display_name"]}</A> (${count})</LI>`).join("\n")
+    return(html);
 }
 
 function get_neighbors(researcher){
@@ -124,14 +124,57 @@ function get_embedding_similarity_graph(researcher,authors_lookup){
     return({nodes:nodes, edges:edges})
 }
 
+function get_coauthor_graph(id, authors_lookup, max_depth){
+    
+    var ids = [id]
+    var nodes = [[id,authors_lookup[id]["total_citation_count"]]]
+    var edges =[]
+    var id_queue = [[id,0]]
+
+    var expand_count = 0
+
+    while(id_queue.length>0){
+
+        [id, depth] = id_queue.shift()
+
+        //console.log(`Expanding ${id} at depth ${depth} of ${max_depth} on step ${expand_count}`)
+
+        if(depth<max_depth){
+
+            var co_authors = authors_lookup[id]["top_coauthors"];
+            for([coid,count] of co_authors){
+                if(id<coid){
+                    edges.push([id, coid, count]);
+                }
+                else{
+                    edges.push([coid, id, count])
+                }
+                if(!ids.includes(coid)){
+                    //console.log(`   Found coauthor ${coid}`)
+                    ids.push(coid);
+                    nodes.push([coid,authors_lookup[coid]["total_citation_count"]]);
+                    id_queue.push([coid, depth+1])
+                }
+            }
+        }
+        expand_count+=1;
+        if(expand_count>100){
+            break
+        }
+    }
+
+    edges = Array.from(new Set(edges.map(arr => JSON.stringify(arr))), str => JSON.parse(str));
+
+    return({"nodes": nodes,"edges":edges});
+}
+
 function render_graph(researcher,authors_lookup){
 
-    var graph = get_embedding_similarity_graph(researcher,authors_lookup)
- 
-    const vis_nodes = new vis.DataSet(graph.nodes.map(n => ({id:n, label:authors_lookup[n]["display_name"],url:`index.html?researcher=${n.split("/")[3]}` })));
-    const vis_edges = new vis.DataSet(graph.edges.map(e => ({from:e[0], to:e[1], weight:e[2], width:e[2] })));
-
     var id=researcher["id"];
+    var graph = get_coauthor_graph(id,authors_lookup,2)
+    const vis_nodes = new vis.DataSet(graph.nodes.map(([id1,count]) => ({id:id1, label: authors_lookup[id1]["display_name"], value: count/500, url:`index.html?researcher=${id1.split("/")[3]}`}))); 
+    const vis_edges = new vis.DataSet(graph.edges.map(([id1,id2,count]) => ({from:id1, to:id2, springConstant: count, value:count, title: count })));
+    
     vis_nodes.update({id:id, color:{background: '#97C2FC',border: '#2B7CE9'},x: 0.0, y: 0.0, fixed: true })
 
     // Create a network
@@ -144,23 +187,48 @@ function render_graph(researcher,authors_lookup){
     window.graph_data = data;
 
     const options = {
+        physics:{
+            enabled: true,
+            stabilization: true,
+            solver: 'barnesHut',
+            barnesHut: {
+                gravitationalConstant: -2000,
+                centralGravity: 0.3,
+                springLength: 100,
+                springConstant: 0.1,
+                damping: 0.09,
+                avoidOverlap: 0
+            }
+        },
         edges: {
             color: {
             color: "#848484"
             }
         },
         nodes: {
+            font: {
+                color: '#343434',
+                size: 12
+            },
             color: {
                 border: '#AAAAAA',
                 background: '#DDDDDD'
+            },
+            shape: 'ellipse',
+            scaling: {
+                min: 8,
+                max: 12,
+                label: {
+                    enabled: true,
+                    min: 8,
+                    max: 20,
+                    maxVisible: 30,
+                    drawThreshold: 5
+                },
             }
         },
         layout: {
             randomSeed: 0
-        },
-        physics: {
-            enabled: true,
-            stabilization: true
         }
     };
 
@@ -171,7 +239,7 @@ function render_graph(researcher,authors_lookup){
     window.network = network;
 
     network.once('stabilizationIterationsDone', function () {
-        network.moveTo({scale: 1,position: { x: 0, y: 0 },animation: false
+        network.moveTo({scale: 1, position: { x: 0, y: 0 }, animation: false
         });
     });
 
@@ -190,7 +258,7 @@ function render_graph(researcher,authors_lookup){
 
 function get_researcher_preview(researcher,N){
     id = researcher["id"]
-    blurb  = `<p><b>${researcher_id_to_link(id,researcher["display_name"])}</b>. ${researcher["affiliation"]}.
+    blurb  = `<p><b>${researcher_id_to_link(id,researcher["display_name"])}. ${researcher["affiliation"]}.</b>
               <em>${researcher["ai_summary"].slice(0,N)} ... </em> 
               ${researcher_id_to_link(id,"<i class='bi bi-box-arrow-right'></i>")}</p>
               `
@@ -203,15 +271,12 @@ async function get_data(){
     const papers_json = "data/papers.json"; 
 
     return fetchJSON(authors_json, papers_json).then(all_data => {
-        var authors_data = all_data["authors"];
-        var papers_data = all_data["papers"];
+        var authors_lookup = all_data["authors"];
+        var papers_lookup = all_data["papers"];
 
-        var papers_lookup = Object.fromEntries(papers_data.map(item => [item["id"], item]));
-        var authors_lookup = Object.fromEntries(authors_data.map(item => [item["id"], item]));
-
-        for (var row of authors_data){
-            row["paper_count"] = row["publication_count"]["total"];
-            row["citation_count"] = row["citation_count"]["total"];
+        for (var row of Object.values(authors_lookup)){
+            row["total_paper_count"] = row["publication_count"]["total"];
+            row["total_citation_count"] = row["citation_count"]["total"];
             row["affiliation"]="";
             if(row["title"]) row["affiliation"] = row["title"] + ", ";
             if(row["unit"]) row["affiliation"] += row["unit"] + ", ";
@@ -221,20 +286,7 @@ async function get_data(){
 
             row["preview"] = get_researcher_preview(row, 300);
 
-            //Get papers
-            var most_cited_papers = row["papers"].map(a => `<LI class="list-group-item">${ get_citation(papers_lookup[a]) }</LI>`).join("\n");
-
             var all_papers = row["papers"].map(a => get_paper_for_grid(papers_lookup[a], authors_lookup));
-
-            //Get similar authors
-            var similar_authors =Object.keys(row["embedding_neighbors"]).map( key => `<LI><A href="index.html?researcher=${key.split("/")[3]}">${authors_lookup[key]["display_name"]}</A> (${(100*row["embedding_neighbors"][key]).toFixed(1)})</LI>`).join("\n")
-
-            //Get topics
-            top_topics = get_top_topics(row["publication_count_by_topic"],10)
-
-            row["most_cited_papers"] = most_cited_papers
-            row["similar_authors"] = similar_authors;
-            row["top_topics"] = top_topics;
             row["all_papers"] = all_papers;
         }
 
@@ -249,7 +301,7 @@ async function get_data(){
 }
 
 function make_card(header, body){
-    out =  `<div class="card w-100" >
+    out =  `<div class="card w-100 h-100" >
                 <div class="card-header">
                     ${header}
                 </div>
@@ -261,7 +313,7 @@ function make_card(header, body){
 }
 
 function make_card_list(header, card_list){
-    out =  `<div class="card w-100" >
+    out =  `<div class="card w-100 h-100" >
                 <div class="card-header">
                     ${header}
                 </div>
@@ -283,10 +335,15 @@ function make_paper_grid(papers, div_name){
                 attributes: (cell) => ({style: 'text-align: right'}),
                 sort: { enabled: true, direction: 'desc'}
             },
-            {name: "Links", field: "links", formatter: (cell) => gridjs.html(cell)}
+            {name: "Links", field: "links", formatter: (cell) => gridjs.html(cell)},
+            {name: "Tech Topics", field: "tech_topics", hidden:true, formatter: (cell) => gridjs.html(cell)},
+            {name: "Health Topics", field: "health_topics", hidden:true, formatter: (cell) => gridjs.html(cell)}
+
         ]
 
     papers = papers.sort((a,b) => b["citations"]-a["citations"])
+
+
 
     //Select Data
     var griddata = papers.map(row => columns.map(col => row[col.field]));
@@ -295,9 +352,12 @@ function make_paper_grid(papers, div_name){
     var papers_grid = new gridjs.Grid({
         columns: columns,
         data: griddata,
-        search: true,
+        search: {
+            ignoreHiddenColumns: false
+        },
         sort: true,
-        pagination: true
+        pagination: true,
+        search_hidden: true
     })
 
     //Render papers grid
@@ -313,11 +373,10 @@ function  show_researcher(researcher,authors_lookup){
 
     var researcher_name = researcher["display_name"];
     var top = make_card(`<H4>${researcher["display_name"]}, ${researcher["affiliation"]}</H4>`, "<i class='bi bi-openai'></i> " + researcher['ai_summary']);
-    var top_topics = make_card("<i class='bi bi-send-fill'></i> <B>Top AgeTech Topics</B>", researcher["top_topics"]);
-    var most_similar = make_card("<i class='bi bi-people'></i> <B>Most Similar Researchers</B>", researcher["similar_authors"]);
-    
-    //var papers = make_card_list("<i class='bi bi-file-earmark-text-fill'></i> <B>Most Cited AgeTech Papers</B>", researcher["most_cited_papers"]);
-  
+    var top_tech_topics = make_card("<i class='bi bi-cpu'></i> <B>Top Tech Topics</B>", format_name_count_list(researcher["top_tech_topics"]));
+    var top_health_topics = make_card("<i class='bi bi-clipboard2-pulse'></i> <B>Top Aging Topics</B>", format_name_count_list(researcher["top_health_topics"]));
+    var top_coauthors = make_card("<i class='bi bi-people'></i> <B>Top AgeTech Co-Authors</B>", format_author_id_count_list(researcher["top_coauthors"],authors_lookup) );
+      
     researcher_div.innerHTML = `<div class='row'>
                                     <div class="col-md-12 mt-4">
                                         ${top}
@@ -327,7 +386,7 @@ function  show_researcher(researcher,authors_lookup){
                                     <div class="col-md-12 mt-4">
                                         <div class="card w-100" >
                                             <div class="card-header">
-                                                <B><i class="bi bi-diagram-3"></i> ${researcher_name}'s Local Research Network</B>
+                                                <B><i class="bi bi-diagram-3"></i> ${researcher_name}'s Local Co-Author Network</B>
                                             </div>
                                             <div class="card-body p-0">
                                                 <div class="row p-0">
@@ -340,11 +399,14 @@ function  show_researcher(researcher,authors_lookup){
                                     </div>
                                  </div>
                                 <div class='row'>
-                                    <div class="col-md-6 mt-4">
-                                        ${top_topics}
+                                    <div class="col-md-4 mt-4">
+                                        ${top_tech_topics}
                                     </div>
-                                    <div class="col-md-6 mt-4">
-                                        ${most_similar}
+                                    <div class="col-md-4 mt-4">
+                                        ${top_health_topics}
+                                    </div>
+                                    <div class="col-md-4 mt-4">
+                                        ${top_coauthors}
                                     </div>
                                 </div>
                                 <div class='row'>
@@ -362,6 +424,24 @@ function  show_researcher(researcher,authors_lookup){
     make_paper_grid(researcher["all_papers"], "papers") 
 }
 
+function getPosition() {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject);
+  });
+}
+
+async function processLocation() {
+        try {
+            const position = await getPosition();
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            console.log(`Latitude: ${latitude}, Longitude: ${longitude}`);
+            // Do something with the coordinates
+        } catch (error) {
+            console.error("Error getting location:", error.message);
+        }
+    }
+
 function show_browser(authors_lookup){
 
     authors = Object.values(authors_lookup);
@@ -370,17 +450,22 @@ function show_browser(authors_lookup){
     //Select Columns 
     var columns= [
             {name: "Researcher", field: "preview", formatter: (cell) => gridjs.html(cell)},
-            {name: "Paper Count", field: "paper_count", 
+            {name: "#Papers", field: "total_paper_count", 
                 formatter: (cell) => gridjs.html(cell), 
                 attributes: (cell) => ({style: 'text-align: right'}),
                 width: '100px'
             },           
-            {name: "Citation Count",  field: "citation_count", 
+            {name: "#Citations",  field: "total_citation_count", 
                 formatter: (cell) => gridjs.html(cell), 
                 attributes: (cell) => ({style: 'text-align: right'}),
                 width: '100px'
             },
-            {name: "Summary", field: "ai_summary", hidden: true}
+            {name: "Summary", field: "ai_summary", hidden: true},
+            {name: "City", field: "city", hidden:true},
+            {name: "Region", field: "region", hidden:true},
+            {name: "Country", field: "country", hidden:true},
+            {name: "Lat", field: "lat", hidden:true},
+            {name: "Lon", field: "lon", hidden:true},
     ]
 
     //Select Data
@@ -392,7 +477,8 @@ function show_browser(authors_lookup){
         data: griddata,
         search: true,
         sort: true,
-        pagination: true
+        pagination: true,
+        resizable: true
     })
 
     //Render papers grid
@@ -404,6 +490,11 @@ function show_browser(authors_lookup){
 function main(){
 
     get_data().then(({authors_lookup, papers_lookup}) => {
+
+        //var graph = get_coauthor_graph("https://openalex.org/A5100606557",authors_lookup,2);
+        //console.log(graph);
+        //return;
+
 
         // Get the full URL
         const url = window.location.href;
