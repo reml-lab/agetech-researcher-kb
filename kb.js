@@ -124,14 +124,14 @@ function get_embedding_similarity_graph(researcher,authors_lookup){
     return({nodes:nodes, edges:edges})
 }
 
-function get_coauthor_graph(id, authors_lookup, max_depth){
+function get_coauthor_graph(id, authors_lookup, max_depth, max_nodes){
     
     var ids = [id]
     var nodes = [[id,authors_lookup[id]["total_citation_count"]]]
     var edges =[]
     var id_queue = [[id,0]]
 
-    var expand_count = 0
+    var node_count = 0
 
     while(id_queue.length>0){
 
@@ -154,11 +154,16 @@ function get_coauthor_graph(id, authors_lookup, max_depth){
                     ids.push(coid);
                     nodes.push([coid,authors_lookup[coid]["total_citation_count"]]);
                     id_queue.push([coid, depth+1])
+                    node_count+=1;
+
+                    if(node_count>max_nodes){
+                        break
+                    }
                 }
             }
         }
-        expand_count+=1;
-        if(expand_count>100){
+
+        if(node_count>max_nodes){
             break
         }
     }
@@ -171,7 +176,7 @@ function get_coauthor_graph(id, authors_lookup, max_depth){
 function render_graph(researcher,authors_lookup){
 
     var id=researcher["id"];
-    var graph = get_coauthor_graph(id,authors_lookup,2)
+    var graph = get_coauthor_graph(id,authors_lookup,3,25)
     const vis_nodes = new vis.DataSet(graph.nodes.map(([id1,count]) => ({id:id1, label: authors_lookup[id1]["display_name"], value: count/500, url:`index.html?researcher=${id1.split("/")[3]}`}))); 
     const vis_edges = new vis.DataSet(graph.edges.map(([id1,id2,count]) => ({from:id1, to:id2, springConstant: count, value:count, title: count })));
     
@@ -372,7 +377,15 @@ function  show_researcher(researcher,authors_lookup){
     const researcher_div = document.getElementById('main');
 
     var researcher_name = researcher["display_name"];
-    var top = make_card(`<H4>${researcher["display_name"]}, ${researcher["affiliation"]}</H4>`, "<i class='bi bi-openai'></i> " + researcher['ai_summary']);
+    var id =  researcher["id"];
+    var orcid = researcher["orcid"]
+
+    var title = `<H4>${researcher_name}, ${researcher["affiliation"]}
+                 <a href="${id}" target="_blank"><img src ="img/openalex.png"></a>`
+    if(orcid) title += `<a href="${orcid}" target="_blank"><img src ="img/orcid.png"></a>`
+    title += "</H4>"
+
+    var top = make_card(title, "<i class='bi bi-openai'></i> " + researcher['ai_summary']);
     var top_tech_topics = make_card("<i class='bi bi-cpu'></i> <B>Top Tech Topics</B>", format_name_count_list(researcher["top_tech_topics"]));
     var top_health_topics = make_card("<i class='bi bi-clipboard2-pulse'></i> <B>Top Aging Topics</B>", format_name_count_list(researcher["top_health_topics"]));
     var top_coauthors = make_card("<i class='bi bi-people'></i> <B>Top AgeTech Co-Authors</B>", format_author_id_count_list(researcher["top_coauthors"],authors_lookup) );
