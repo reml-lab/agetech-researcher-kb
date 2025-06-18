@@ -1,10 +1,3 @@
-function do_search(text){
-    const searchInput = document.querySelector('.gridjs-input');
-    if (searchInput) {
-        searchInput.value = text;
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-}
 
 function fetchJSON(url1, url2) {
     // Fetch both files
@@ -263,10 +256,13 @@ function render_graph(researcher,authors_lookup){
 
 function get_researcher_preview(researcher,N){
     id = researcher["id"]
-    blurb  = `<p><b>${researcher_id_to_link(id,researcher["display_name"])}. ${researcher["affiliation"]}.</b>
-              <em>${researcher["ai_summary"].slice(0,N)} ... </em> 
-              ${researcher_id_to_link(id,"<i class='bi bi-box-arrow-right'></i>")}</p>
-              `
+    blurb  = `<p><b>${researcher_id_to_link(id,researcher["display_name"])}.` 
+    if (researcher["affiliation"]!="") blurb  += ` ${researcher["affiliation"]}.`
+    if (researcher["location"]!="") blurb  += ` ${researcher["location"]}.`
+               
+    blurb  += ` </b><em>${researcher["ai_summary"].slice(0,N)} ... </em>
+                    ${researcher_id_to_link(id,"<i class='bi bi-box-arrow-right'></i>")}</p>`
+              
     return(blurb)
 }
 
@@ -283,11 +279,17 @@ async function get_data(){
             row["total_paper_count"] = row["publication_count"]["total"];
             row["total_citation_count"] = row["citation_count"]["total"];
             row["affiliation"]="";
-            if(row["title"]) row["affiliation"] = row["title"] + ", ";
-            if(row["unit"]) row["affiliation"] += row["unit"] + ", ";
-            if(row["org"]) row["affiliation"] += row["org"];
+            if(row["title"]!=null) row["affiliation"] = row["title"] + ", ";
+            if(row["unit"]!=null) row["affiliation"] += row["unit"] + ", ";
+            if(row["org"]!=null) row["affiliation"] += row["org"];
             if(row["affiliation"].slice(-2)==", ") row["affiliation"]=row["affiliation"].slice(0, -2);
             row["name_affiliation"] = `${row["display_name"]}. ${row["affiliation"]}.`;
+
+            row["location"] = "";
+            if(row["city"] != null) row["location"] = row["city"] + ", ";
+            if(row["region"] != null && row["city"]!=row["region"]) row["location"] += row["region"] + ", ";
+            if(row["country"] != null) row["location"] += row["country"];
+            if(row["location"].slice(-2)==", ") row["location"]=row["location"].slice(0, -2);
 
             row["preview"] = get_researcher_preview(row, 300);
 
@@ -379,11 +381,13 @@ function  show_researcher(researcher,authors_lookup){
     var researcher_name = researcher["display_name"];
     var id =  researcher["id"];
     var orcid = researcher["orcid"]
+    var location = researcher["location"]
 
     var title = `<H4>${researcher_name}, ${researcher["affiliation"]}
-                 <a href="${id}" target="_blank"><img src ="img/openalex.png"></a>`
-    if(orcid) title += `<a href="${orcid}" target="_blank"><img src ="img/orcid.png"></a>`
+                 <a href="${id}" target="_blank"><img src ="img/openalex.png" width="24px"></a>`
+    if(orcid) title += `<a href="${orcid}" target="_blank"><img src ="img/orcid.png" width="24px"></a>`
     title += "</H4>"
+    if(location!="") title+= `<p>${location}</p>`;
 
     var top = make_card(title, "<i class='bi bi-openai'></i> " + researcher['ai_summary']);
     var top_tech_topics = make_card("<i class='bi bi-cpu'></i> <B>Top Tech Topics</B>", format_name_count_list(researcher["top_tech_topics"]));
@@ -455,7 +459,67 @@ async function processLocation() {
         }
     }
 
-function show_browser(authors_lookup){
+function browser_search(){
+    const search_field = document.getElementById("search_field").value;
+    const search_value = document.getElementById("search_value").value;
+
+    var search=[{field:search_field,value:search_value}];
+
+    var griddata=window.all_grid_data;
+    var authors_grid=window.authors_grid;
+    var col_ind_lookup=window.col_ind_lookup;    
+
+    //Filter Data
+    if(search){
+        for(var term of search){
+            var field = term.field;
+            var value = term["value"].trim().toLowerCase();
+            console.log("Search: ", field, value);
+            if(value==""){
+                continue
+            }
+            switch(field){
+                case "researcher_name":
+                    console.log("Filtering name for " + value)
+                    ind = col_ind_lookup["Name"];
+                    griddata = griddata.filter(row => row[ind].trim().toLowerCase().includes(value))
+                    break
+                case "keyword":
+                    console.log("Filtering summary for " + value)
+                    ind = col_ind_lookup["Summary"];
+                    griddata = griddata.filter(row => row[ind].trim().toLowerCase().includes(value))
+                    break
+                case "location":
+                    console.log("Filtering summary for " + value)
+                    var loc_fields = ["Affiliation","Location"];
+                    var inds = loc_fields.map(f => col_ind_lookup[f])
+                    griddata = griddata.filter(row => {
+                            var match = false;
+                            for(var ind of inds){
+                                if(row[ind]!==null) match = match || row[ind].trim().toLowerCase().includes(value);
+                            }
+                            return(match)
+                        })
+                    break
+            }
+        }  
+    }
+
+    //Update the grid
+    authors_grid.updateConfig({data: griddata}).forceRender();
+
+}
+
+function browser_search_clear(){
+    const search_value = document.getElementById("search_value").value="";
+    var griddata=window.all_grid_data;
+    authors_grid.updateConfig({data: griddata}).forceRender();
+}
+
+function show_browser(authors_lookup, search=null){
+
+    document.getElementById("search").classList.remove("d-none");
+    console.log(document.getElementById("search").style.display )
 
     authors = Object.values(authors_lookup);
     authors = authors.sort((a,b) => b["citation_count"]-a["citation_count"]);
@@ -473,13 +537,14 @@ function show_browser(authors_lookup){
                 attributes: (cell) => ({style: 'text-align: right'}),
                 width: '100px'
             },
+            {name: "Name", field: "display_name", hidden: true},
             {name: "Summary", field: "ai_summary", hidden: true},
-            {name: "City", field: "city", hidden:true},
-            {name: "Region", field: "region", hidden:true},
-            {name: "Country", field: "country", hidden:true},
+            {name: "Affiliation", field: "affiliation", hidden: true},
+            {name: "Location", field: "location", hidden:true},
             {name: "Lat", field: "lat", hidden:true},
             {name: "Lon", field: "lon", hidden:true},
     ]
+    var col_ind_lookup = Object.fromEntries(columns.map((x,i)=>[x.name,i]));
 
     //Select Data
     var griddata = authors.map(row => columns.map(col => row[col.field]));
@@ -488,14 +553,17 @@ function show_browser(authors_lookup){
     var authors_grid = new gridjs.Grid({
         columns: columns,
         data: griddata,
-        search: true,
         sort: true,
         pagination: true,
         resizable: true
     })
 
     //Render papers grid
+    document.getElementById("main")
     authors_grid.render(document.getElementById("main"));
+    window.all_grid_data = griddata;
+    window.authors_grid = authors_grid;
+    window.col_ind_lookup = col_ind_lookup;
 
 }
 
@@ -503,11 +571,6 @@ function show_browser(authors_lookup){
 function main(){
 
     get_data().then(({authors_lookup, papers_lookup}) => {
-
-        //var graph = get_coauthor_graph("https://openalex.org/A5100606557",authors_lookup,2);
-        //console.log(graph);
-        //return;
-
 
         // Get the full URL
         const url = window.location.href;
@@ -527,204 +590,3 @@ function main(){
 }
 
 main();
-
-/*fetchJSON(authors_json, papers_json).then(all_data => {
-    var authors_data = all_data["authors"];
-    var papers_data = all_data["papers"];
-
-    var paper_lookup = Object.fromEntries(papers_data.map(item => [item["id"], item]));
-    var authors_lookup = Object.fromEntries(authors_data.map(item => [item["id"], item]));
-
-    for (var row of authors_data){
-        row["paper_count"] = row["publication_count"]["total"];
-        row["citation_count"] = row["citation_count"]["total"];
-        row["affiliation"]="";
-        if(row["title"]) row["affiliation"] = row["title"] + ", ";
-        if(row["unit"]) row["affiliation"] += row["unit"] + ", ";
-        if(row["org"]) row["affiliation"] += row["org"];
-        if(row["affiliation"].slice(-2)==", ") row["affiliation"]=row["affiliation"].slice(0, -2);
-        row["name_affiliation"] = `${row["display_name"]}. ${row["affiliation"]}.`;
-
-        //Get papers
-        var most_cited_papers = row["most_cited_papers"].map(a => `<LI>${ get_citation(paper_lookup[a]) }</LI>`).join("\n");
-
-        //Get similar authors
-        var similar_authors =Object.keys(row["embedding_neighbors"]).map( key => `<LI>${authors_lookup[key]["display_name"]} (${(100*row["embedding_neighbors"][key]).toFixed(1)})</LI>`).join("\n")
-
-        //return;
-
-        //Get topics
-        var pub_counts = row["publication_count_by_topic"];
-        topic_list = []
-        for (var t1 in  pub_counts){
-            for (var t2 in  pub_counts[t1]){
-                topic_list.push([`${t1} x ${t2}`, pub_counts[t1][t2]]);
-            }
-        }
-        topic_list=topic_list.sort((a, b) => b[1] - a[1]);
-        top_topics = topic_list.slice(0,5).map( a=> `<LI>${a[0]} (${a[1]})</LI>` ).join("\n");
-
-        var details = `<div style="margin-bottom:1em"> <i class="bi bi-openai"></i> <B>Research Summary:</B> ${row['ai_summary']}</div>`;
-        details    += `<div style="margin-bottom:1em"> <i class="bi bi-send-fill"></i> <B>Top AgeTech Topics:</B><UL>\n${top_topics}</UL></div>`;
-        details    += `<div style="margin-bottom:1em"> <i class="bi bi-people"></i> <B>Most Similar Researchers:</B><UL>\n${similar_authors}</UL></div>`;
-        details    += `<div style="margin-bottom:1em"> <i class="bi bi-file-earmark-text-fill"></i> <B>Most Cited AgeTech Papers:</B><UL>\n${most_cited_papers}</UL></div>`;
-        
-        var id = row["id"];
-        row["researcher"] = row["name_affiliation"]
-        row["researcher"] +=`
-            <A HREF="#expandableDiv-${id}"  role="button" data-bs-toggle="collapse" aria-expanded="false" aria-controls="expandableDiv-${id}">[More]</A>
-            <div class="collapse" id="expandableDiv-${id}">
-                <div class="card border-0 bg-transparent">
-                    <div class="card-body mt-2">
-                    ${details}
-                    </div>
-                </div>
-            </div>`
-
-        row["links"] = `<A HREF="${row["id"]}" target="_blank"><IMG width="24" SRC="img/openalex.png" title="Open in OpenAlex"></A>`;
-        if(row["orcid"]){ 
-            row["links"] = `<A HREF="${row["orcid"]}" target="_blank"><IMG width="24" SRC="img/orcid.png" title="Open in ORCID"></A>` + row["links"];
-        }
-    }
-
-    //Select Columns 
-    columns= [
-            {name: "researcher", formatter: (cell) => gridjs.html(cell)},
-            {name: "display_name",hidden: true},
-            {name: "affiliation",hidden: true},
-            {name: "title", hidden: true},
-            {name: "unit", hidden: true},
-            {name: "org", hidden: true},
-            {name: "paper_count", formatter: (cell) => gridjs.html(cell)},
-            {name: "citation_count", formatter: (cell) => gridjs.html(cell)},
-            {name: "links", formatter: (cell) => gridjs.html(cell)}
-        ]
-
-    //Select Data
-    griddata = authors_data.map(row => columns.map(col => row[col.name]));
-        
-    // Initialize Grid.js
-    new gridjs.Grid({
-        columns: columns,
-        data: griddata,
-        search: true,
-        sort: true,
-        pagination: false
-    }).render(document.getElementById("grid"));
-    }).catch(error => {
-    console.error("Error loading json data:", error);
-});*/
-
-
-
-// Fetch and parse the CSV
-/*fetch(authors_json)
-    .then(response => response.text())
-    .then(raw_author_data => {
-
-
-    //Get and parse data
-    const data = JSON.parse(raw_author_data);
-    var columns = Object.keys(data[0]).filter(k => k !== ""); // Remove empty headers        
-
-    for (var row of data){
-        row["paper_count"] = row["publication_count"]["total"];
-        row["citation_count"] = row["citation_count"]["total"];
-        row["affiliation"]="";
-        if(row["title"]) row["affiliation"] = row["title"] + ", ";
-        if(row["unit"]) row["affiliation"] += row["unit"] + ", ";
-        if(row["org"]) row["affiliation"] += row["org"];
-        if(row["affiliation"].slice(-2)==", ") row["affiliation"]=row["affiliation"].slice(0, -2);
-        row["name_affiliation"] = `${row["display_name"]}. ${row["affiliation"]}.`;
-
-        //Get topics
-        var pub_counts = row["publication_count_by_topic"];
-        topic_list = []
-        for (var t1 in  pub_counts){
-            for (var t2 in  pub_counts[t1]){
-                topic_list.push([`${t1} x ${t2}`, pub_counts[t1][t2]]);
-            }
-        }
-        topic_list=topic_list.sort((a, b) => b[1] - a[1]);
-        top_topics = topic_list.slice(0,5).map( a=> `<LI>${a[0]} (${a[1]})</LI>` ).join("\n");
-
-
-
-        var details = `<LI><B>Research Summary:</B> ${row['ai_summary']}</LI>`;
-        details += `<LI><B>Top AgeTech Topics</B><UL>\n${top_topics }</UL></LI>`
-
-        var id = row["id"];
-        row["researcher"] = row["name_affiliation"]
-        row["researcher"] +=`
-            <A HREF="#expandableDiv-${id}"  role="button" data-bs-toggle="collapse" aria-expanded="false" aria-controls="expandableDiv-${id}">[More]</A>
-            <div class="collapse" id="expandableDiv-${id}">
-                <div class="card border-0 bg-transparent">
-                    <div class="card-body mt-2">
-                    <UL>
-                    ${details}
-                    </UL>
-                    </div>
-                </div>
-            </div>`
-
-        row["links"] = `<A HREF="${row["id"]}" target="_blank"><IMG width="24" SRC="img/openalex.png" title="Open in OpenAlex"></A>`;
-        if(row["orcid"]){ 
-            row["links"] = `<A HREF="${row["orcid"]}" target="_blank"><IMG width="24" SRC="img/orcid.png" title="Open in ORCID"></A>` + row["links"];
-        }
-    }
-
-    //Select Columns 
-    columns= [
-            {name: "researcher", formatter: (cell) => gridjs.html(cell)},
-            {name: "display_name",hidden: true},
-            {name: "affiliation",hidden: true},
-            {name: "title", hidden: true},
-            {name: "unit", hidden: true},
-            {name: "org", hidden: true},
-            {name: "paper_count", formatter: (cell) => gridjs.html(cell)},
-            {name: "citation_count", formatter: (cell) => gridjs.html(cell)},
-            {name: "links", formatter: (cell) => gridjs.html(cell)}
-        ]
-
-    //Select Data
-    griddata = data.map(row => columns.map(col => row[col.name]));
-        
-    // Initialize Grid.js
-    new gridjs.Grid({
-        columns: columns,
-        data: griddata,
-        search: true,
-        sort: true,
-        pagination: false
-    }).render(document.getElementById("grid"));
-    })
-    .catch(error => {
-    console.error("Error loading CSV:", error);
-    }); */
-
-// Customize the search bar once it's rendered
-/*setTimeout(() => {
-    const searchContainer = document.querySelector('.gridjs-search');
-    const input = searchContainer.querySelector('.gridjs-input');
-
-    // Create label
-    const label = document.createElement('span');
-    label.textContent = 'Search: ';
-    label.style.marginRight = '8px';
-
-    // Create clear button
-    const clearBtn = document.createElement('button');
-    clearBtn.textContent = 'Clear';
-    clearBtn.style.marginLeft = '8px';
-    clearBtn.className = 'btn ';
-
-    clearBtn.addEventListener('click', () => {
-    input.value = '';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-
-    // Insert label and clear button
-    searchContainer.insertBefore(label, input);
-    searchContainer.appendChild(clearBtn);
-}, 100);*/
-

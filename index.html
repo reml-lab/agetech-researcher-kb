@@ -21,13 +21,36 @@
 <body>
   <div class="container mb-5">
     <div class="container mt-4 p-0">
+
         <div class="p-2 bg-primary text-white rounded">
           <h2><A class="link-light text-decoration-none" href = "index.html"><i class="bi bi-house-door-fill"></i> MassAITC AgeTech Researcher Knowledge Base</A></h2>
         </div>
-        <div id="loading" class="mx-auto" style="width: 500px;">
-          <img src = "img/loading.gif">
+
+        <div class="d-none row  md-4 p-2" id="search">
+            <div class="col-3 p-1" >
+              <select class="form-select" id="search_field">
+                <option selected value="researcher_name">Researcher Name</option>
+                <option value="keyword">Keyword</option>
+                <option value="location">Location</option>
+              </select>
+            </div>
+            <div class="col-4 p-1">
+              <input class="form-control" type="text" placeholder="Search" id="search_value"/>
+            </div>
+            <div class="col-5 p-1">
+              <button type="submit" class="btn btn-block btn-primary" onclick="browser_search()">Search</button>
+              <button type="submit" class="btn btn-block btn-primary" onclick="browser_search_clear()">Clear</button>
+            </div>
+          </form>
+        </div>
+      
+      <div id="loading" class="mx-auto" style="width: 500px;">
+        <img src = "img/loading.gif">
+      </div>
+
+      <div id="main"></div>
+
     </div>
-    <div id="main"></div>
   </div>
 </body>
 </html>
