@@ -8,8 +8,8 @@ MassAITC AgeTech Researcher Knowledge Base web application can be accessed at ht
 
 ### Knowledge Base Browser View
 
-![Knowledge Base Viewer UI](https://raw.githubusercontent.com/reml-lab/massaitckb/main/img/ui-browser.png)
+![Knowledge Base Viewer UI](https://github.com/reml-lab/agetech-researcher-kb/blob/main/img/ui-browser.png?raw=true)
 
 ### Knowledge Base Profile View
 
-![Knowledge Base Viewer UI](https://raw.githubusercontent.com/reml-lab/massaitckb/main/img/ui-profile.png)
+![Knowledge Base Viewer UI](https://github.com/reml-lab/agetech-researcher-kb/blob/main/img/ui-profile.png?raw=true)
