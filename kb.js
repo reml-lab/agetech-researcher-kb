@@ -319,7 +319,7 @@ function make_card(header, body){
     return(out)
 }
 
-function make_card_list(header, card_list){
+function make_card_with_list(header, card_list){
     out =  `<div class="card w-100 h-100" >
                 <div class="card-header">
                     ${header}
@@ -329,6 +329,45 @@ function make_card_list(header, card_list){
                 </UL>
          </div>`
     return(out)
+}
+
+function make_card_with_map(header, body){
+    out =  `<div class="card w-100 h-100" >
+                <div class="card-header">
+                    ${header}
+                </div>
+                <div class="card-body p-4">
+                    <div class="row">
+                        <div class="col-9">
+                            ${body}
+                        </div>
+                        <div id="map" class="col-3">
+                            
+                        </div>                        
+                </div>
+            </div>`
+    return(out)
+}
+
+function show_map(lat, lon, zoom, map_div){
+
+        var map = L.map('map').setView([lat, lon], zoom);
+
+        // Add the OpenStreetMap tiles
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Define the latitude and longitude of your point
+        var lat = lat;
+        var lon = lon;
+
+        // Create a marker at the specified coordinates and add it to the map
+        var marker = L.marker([lat, lon]).addTo(map);
+
+        // Optionally, add a popup to the marker
+        //marker.bindPopup("Your point of interest").openPopup();
 }
 
 function make_paper_grid(papers, div_name){
@@ -389,7 +428,13 @@ function  show_researcher(researcher,authors_lookup){
     title += "</H4>"
     if(location!="") title+= `<p>${location}</p>`;
 
-    var top = make_card(title, "<i class='bi bi-openai'></i> " + researcher['ai_summary']);
+    if(researcher["lat"]!=null  && researcher["lat"]!=""){
+        var top = make_card_with_map(title, "<i class='bi bi-openai'></i> " + researcher['ai_summary']);
+    }
+    else{
+        var top = make_card(title, "<i class='bi bi-openai'></i> " + researcher['ai_summary']);
+    }
+
     var top_tech_topics = make_card("<i class='bi bi-cpu'></i> <B>Top Tech Topics</B>", format_name_count_list(researcher["top_tech_topics"]));
     var top_health_topics = make_card("<i class='bi bi-clipboard2-pulse'></i> <B>Top Aging Topics</B>", format_name_count_list(researcher["top_health_topics"]));
     var top_coauthors = make_card("<i class='bi bi-people'></i> <B>Top AgeTech Co-Authors</B>", format_author_id_count_list(researcher["top_coauthors"],authors_lookup) );
@@ -437,8 +482,12 @@ function  show_researcher(researcher,authors_lookup){
                                     </div>
                                 </div>`
 
+    
+    if(researcher["lat"]!=null  && researcher["lat"]!=""){
+        show_map(researcher["lat"], researcher["lon"],1, "map");
+    }
     render_graph(researcher, authors_lookup);
-    make_paper_grid(researcher["all_papers"], "papers") 
+    make_paper_grid(researcher["all_papers"], "papers");
 }
 
 function getPosition() {
