@@ -618,6 +618,7 @@ function browser_search_clear(){
 function show_browser(authors_lookup, search=null){
 
     document.getElementById("search").classList.remove("d-none");
+    document.getElementById("info").classList.remove("d-none");
 
     authors = Object.values(authors_lookup);
     authors = authors.sort((a,b) => b["citation_count"]-a["citation_count"]);
