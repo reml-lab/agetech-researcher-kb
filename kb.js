@@ -508,6 +508,22 @@ async function processLocation() {
         }
     }
 
+
+async function get_location(text){
+    text = encodeURIComponent(text)
+    var query = `https://nominatim.openstreetmap.org/search?q=${text}&format=json&addressdetails=1`
+    var response = await fetch(query);
+    var data=await response.json();
+    return([data[0]["lon"],data[0]["lat"]])
+}
+
+function get_distance(lon1, lat1, lon2, lat2){
+    var from = turf.point([lon1, lat1]);
+    var to = turf.point([lon2, lat2]);
+    var options = { units: "kilometers" };
+    return Math.round(turf.distance(from, to, options));
+}
+
 function browser_search(){
     const search_field = document.getElementById("search_field").value;
     const search_value = document.getElementById("search_value").value;
@@ -520,6 +536,12 @@ function browser_search(){
 
     //Filter Data
     if(search){
+
+        ind_dist= col_ind_lookup["Distance"];
+
+        window.authors_grid.config.columns[ind_dist].hidden=true;
+        window.grid_column_options[ind_dist].hidden=false;
+
         for(var term of search){
             var field = term.field;
             var value = term["value"].trim().toLowerCase();
@@ -532,11 +554,13 @@ function browser_search(){
                     console.log("Filtering name for " + value)
                     ind = col_ind_lookup["Name"];
                     griddata = griddata.filter(row => row[ind].trim().toLowerCase().includes(value))
+                    authors_grid.updateConfig({data: griddata}).forceRender();
                     break
                 case "keyword":
                     console.log("Filtering summary for " + value)
                     ind = col_ind_lookup["Summary"];
                     griddata = griddata.filter(row => row[ind].trim().toLowerCase().includes(value))
+                    authors_grid.updateConfig({data: griddata}).forceRender();
                     break
                 case "location":
                     console.log("Filtering summary for " + value)
@@ -549,26 +573,51 @@ function browser_search(){
                             }
                             return(match)
                         })
+                    authors_grid.updateConfig({data: griddata}).forceRender();
                     break
+                case "close_to":
+
+                    ind_lon = col_ind_lookup["Lon"];
+                    ind_lat = col_ind_lookup["Lat"];
+                    ind_dist= col_ind_lookup["Distance"];
+
+                    get_location(value).then(([lon1, lat1])  => {
+                        console.log("Location search from:",value,lon1,lat1)
+                        for (var row of griddata){
+                            if(row[ind_lon] != null && row[ind_lat]!=null){
+                                row[ind_dist] = get_distance(lon1, lat1, row[ind_lon], row[ind_lat]);
+                                console.log("  to: ", row[ind_lon], row[ind_lat], row[ind_dist]);
+                            }
+                            else{
+                                row[ind_dist]=null;
+                            }
+                        }
+                        griddata = griddata.filter(row => row[ind_dist]!=null)
+                        griddata.sort((a,b)=>a[ind_dist]-b[ind_dist])
+                        griddata = griddata.slice(0,20)
+
+                        window.grid_column_options[ind_dist].hidden=false;
+                        window.authors_grid.config.columns[ind_dist].hidden=false;
+                        authors_grid.updateConfig({data: griddata}).forceRender();
+                    });
+
             }
         }  
     }
 
-    //Update the grid
-    authors_grid.updateConfig({data: griddata}).forceRender();
 
 }
 
 function browser_search_clear(){
     const search_value = document.getElementById("search_value").value="";
     var griddata=window.all_grid_data;
+    window.authors_grid.config.columns[ind_dist].hidden=true;
     authors_grid.updateConfig({data: griddata}).forceRender();
 }
 
 function show_browser(authors_lookup, search=null){
 
     document.getElementById("search").classList.remove("d-none");
-    console.log(document.getElementById("search").style.display )
 
     authors = Object.values(authors_lookup);
     authors = authors.sort((a,b) => b["citation_count"]-a["citation_count"]);
@@ -579,12 +628,12 @@ function show_browser(authors_lookup, search=null){
             {name: "#Papers", field: "total_paper_count", 
                 formatter: (cell) => gridjs.html(cell), 
                 attributes: (cell) => ({style: 'text-align: right'}),
-                width: '100px'
+                hidden:false
             },           
             {name: "#Citations",  field: "total_citation_count", 
                 formatter: (cell) => gridjs.html(cell), 
                 attributes: (cell) => ({style: 'text-align: right'}),
-                width: '100px'
+                hidden:true
             },
             {name: "Name", field: "display_name", hidden: true},
             {name: "Summary", field: "ai_summary", hidden: true},
@@ -592,6 +641,8 @@ function show_browser(authors_lookup, search=null){
             {name: "Location", field: "location", hidden:true},
             {name: "Lat", field: "lat", hidden:true},
             {name: "Lon", field: "lon", hidden:true},
+            {name: "Distance", field: "dist", hidden:true, attributes: (cell) => ({style: 'text-align: right'})},
+
     ]
     var col_ind_lookup = Object.fromEntries(columns.map((x,i)=>[x.name,i]));
 
@@ -604,15 +655,15 @@ function show_browser(authors_lookup, search=null){
         data: griddata,
         sort: true,
         pagination: true,
-        resizable: true
+        resizable: false
     })
 
     //Render papers grid
-    document.getElementById("main")
     authors_grid.render(document.getElementById("main"));
     window.all_grid_data = griddata;
     window.authors_grid = authors_grid;
     window.col_ind_lookup = col_ind_lookup;
+    window.grid_column_options = columns;
 
 }
 

@@ -2,3 +2,20 @@ img {
         margin-right: 4px;
         margin-left: 4px;
     }
+
+.gridjs-th {
+    white-space: normal !important;  
+    overflow: visible !important;    
+    text-overflow: unset !important;
+    min-width: 140px;
+}
+
+.gridjs-table {
+    table-layout: auto !important;
+}
+
+.gridjs-th[style], .gridjs-td[style] {
+  min-width: 100px !important;
+}
+
+
